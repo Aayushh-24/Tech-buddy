@@ -13,6 +13,7 @@
     "db:reset": "prisma migrate reset"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.40",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -51,6 +52,7 @@
     "@tanstack/react-query": "^5.82.0",
     "@tanstack/react-table": "^8.21.3",
     "@vercel/blob": "^2.0.0",
+    "ai": "^5.0.57",
     "axios": "^1.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
