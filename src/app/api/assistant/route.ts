@@ -12,18 +12,29 @@ const openrouter = createOpenAI({
 
 export async function POST(req: Request) {
   try {
-    // Check if the API key is available
     if (!process.env.OPENROUTER_API_KEY) {
       return new Response('OpenRouter API key is not configured.', { status: 401 });
     }
 
-    const { messages } = await req.json();
+    // --- START OF FIX ---
+    // Make the backend compatible with the frontend's request format
+    const body = await req.json();
+    let messages = body.messages;
+
+    // If the frontend sends a single 'message' string, convert it to the required array format
+    if (!messages && body.message) {
+      messages = [{ role: 'user', content: body.message }];
+    }
+
+    // If there are still no messages, return an error
+    if (!messages || messages.length === 0) {
+      return new Response('Messages are required in the request body.', { status: 400 });
+    }
+    // --- END OF FIX ---
 
     const result = await streamText({
-      // Use a model that is compatible with OpenRouter
       model: openrouter('mistralai/mistral-7b-instruct:free'),
-      messages,
-      // Define the system prompt for your AI assistant
+      messages, // Use the (potentially converted) messages array
       system: `You are TechBuddy, an expert AI technical assistant specializing in software development. Be helpful, provide clear code examples using markdown, and explain complex concepts simply.`,
     });
 
