@@ -1,6 +1,5 @@
-// NOTE: The import statement at the top has been removed.
+// Note: The import for 'pdf-parse' at the top of the file has been removed.
 
-// Define a type for the result for better code quality
 type PDFProcessResult = {
   success: boolean;
   text: string;
@@ -18,15 +17,13 @@ export class PDFProcessor {
     fileSize: number
   ): Promise<PDFProcessResult> {
     try {
-      // Dynamically import the pdf-parse library only when needed
+      // Dynamically import the pdf-parse library only when the function is running
       const pdf = (await import('pdf-parse')).default;
 
-      // Use the library to extract data from the file buffer
       const data = await pdf(fileBuffer);
 
       const text = data.text;
 
-      // Check if text extraction returned any content
       if (!text || text.trim().length === 0) {
         throw new Error('No text content found in the PDF. It may be an image-only file.');
       }
@@ -48,7 +45,7 @@ export class PDFProcessor {
       
       return {
         success: false,
-        text: `PDF Document: ${originalName}\n\nThis document has been uploaded, but automatic text extraction failed. This can happen if the PDF contains only images, has complex formatting, or is encrypted.`,
+        text: `PDF Document: ${originalName}\n\nThis document has been uploaded, but automatic text extraction failed.`,
         metadata: {
           pages: 0,
           processingMethod: 'pdf-parse-failed',
