@@ -1,5 +1,9 @@
-// Note: The import for 'pdf-parse' at the top of the file has been removed.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 
+// This is needed to prevent a Vercel build error with this specific library
+import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+
+// Define a type for the result for better code quality
 type PDFProcessResult = {
   success: boolean;
   text: string;
@@ -17,25 +21,32 @@ export class PDFProcessor {
     fileSize: number
   ): Promise<PDFProcessResult> {
     try {
-      // Dynamically import the pdf-parse library only when the function is running
-      const pdf = (await import('pdf-parse')).default;
+      // Load the PDF document from the buffer
+      const loadingTask = pdfjs.getDocument({ data: fileBuffer });
+      const pdf = await loadingTask.promise;
+      const numPages = pdf.numPages;
+      let fullText = '';
 
-      const data = await pdf(fileBuffer);
+      // Extract text from each page
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => (item as TextItem).str).join(' ');
+        fullText += pageText + '\n';
+      }
 
-      const text = data.text;
-
-      if (!text || text.trim().length === 0) {
+      if (!fullText || fullText.trim().length === 0) {
         throw new Error('No text content found in the PDF. It may be an image-only file.');
       }
 
-      console.log(`Successfully extracted ${text.length} characters from ${originalName}`);
+      console.log(`Successfully extracted ${fullText.length} characters from ${originalName}`);
 
       return {
         success: true,
-        text: text,
+        text: fullText,
         metadata: {
-          pages: data.numpages,
-          processingMethod: 'pdf-parse-library',
+          pages: numPages,
+          processingMethod: 'pdfjs-dist',
         },
       };
 
@@ -48,7 +59,7 @@ export class PDFProcessor {
         text: `PDF Document: ${originalName}\n\nThis document has been uploaded, but automatic text extraction failed.`,
         metadata: {
           pages: 0,
-          processingMethod: 'pdf-parse-failed',
+          processingMethod: 'pdfjs-dist-failed',
           error: errorMessage,
         },
       };
