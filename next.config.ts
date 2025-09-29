@@ -1,25 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Re-enabling React Strict Mode is highly recommended as it helps
+  // identify potential problems in your application during development.
+  reactStrictMode: true,
+
+  // WARNING: The following options are kept to prevent your build from failing
+  // due to existing errors in your code. It is strongly recommended to fix
+  // the underlying TypeScript and ESLint errors and remove these lines
+  // for a stable production application.
   typescript: {
     ignoreBuildErrors: true,
   },
-  // 禁用 Next.js 热重载，由 nodemon 处理重编译
-  reactStrictMode: false,
-  webpack: (config, { dev }) => {
-    if (dev) {
-      // 禁用 webpack 的热模块替换
-      config.watchOptions = {
-        ignored: ['**/*'], // 忽略所有文件变化
-      };
-    }
-    return config;
-  },
   eslint: {
-    // 构建时忽略ESLint错误
     ignoreDuringBuilds: true,
   },
+
+  // The custom webpack configuration has been removed as it interferes with
+  // Vercel's optimized build and deployment process.
 };
 
 export default nextConfig;
