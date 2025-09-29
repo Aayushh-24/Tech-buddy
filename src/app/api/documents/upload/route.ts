@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import { put } from '@vercel/blob'; // 1. Import the 'put' function from Vercel Blob
+import { put } from '@vercel/blob';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // --- All validation logic remains the same ---
+    // Validation logic...
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -25,75 +25,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File size exceeds 10MB limit.' }, { status: 400 });
     }
 
-    // --- START OF REFACTORED BLOB LOGIC ---
-
-    // 2. Generate a unique filename for the blob
+    // Upload to Vercel Blob
     const fileExtension = file.name.split('.').pop();
     const filename = `${uuidv4()}.${fileExtension}`;
-
-    // 3. Upload the file to Vercel Blob storage
     const blob = await put(filename, file, {
       access: 'public',
     });
 
-    // --- END OF REFACTORED BLOB LOGIC ---
-
     // Get or create default user
-    let user = await db.user.findUnique({
-      where: { id: 'default-user' }
-    });
+    let user = await db.user.findUnique({ where: { id: 'default-user' } });
     if (!user) {
       user = await db.user.create({
-        data: {
-          id: 'default-user',
-          email: 'default@example.com',
-          name: 'Default User'
-        }
+        data: { id: 'default-user', email: 'default@example.com', name: 'Default User' }
       });
     }
 
-    // 4. Save the public Blob URL to the database
+    // Save the Blob URL to the database
     const document = await db.document.create({
       data: {
         filename,
         originalName: file.name,
         fileType: fileExtension as 'pdf' | 'docx',
         fileSize: file.size,
-        filePath: blob.url, // IMPORTANT: Save the URL from Vercel Blob
+        filePath: blob.url,
         status: 'processing',
         userId: user.id
       }
     });
 
-    // Start processing for RAG pipeline (your existing logic)
-    try {
-      fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/documents/${document.id}/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      }).catch(error => {
-        console.error('Error triggering document processing:', error);
-      });
-    } catch (error) {
-      console.error('Error starting document processing:', error);
-    }
+    // --- THIS IS THE CORRECTED PART ---
+    // Trigger the processing step using the correct live URL
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+    fetch(`${baseUrl}/api/documents/${document.id}/process`, {
+      method: 'POST',
+    }).catch(e => console.error("Failed to trigger processing:", e));
+    // --- END OF CORRECTION ---
 
     return NextResponse.json({ 
       message: 'File uploaded successfully',
-      document: {
-        id: document.id,
-        filename: document.originalName,
-        fileType: document.fileType,
-        fileSize: document.fileSize,
-        status: document.status
-      }
+      document: { id: document.id, filename: document.originalName }
     });
 
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ 
-      error: 'Failed to upload file' 
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to upload file' }, { status: 500 });
   }
 }
