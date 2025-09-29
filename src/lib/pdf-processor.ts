@@ -1,4 +1,4 @@
-import pdf from 'pdf-parse';
+// NOTE: The import statement at the top has been removed.
 
 // Define a type for the result for better code quality
 type PDFProcessResult = {
@@ -18,7 +18,10 @@ export class PDFProcessor {
     fileSize: number
   ): Promise<PDFProcessResult> {
     try {
-      // Use the pdf-parse library to extract data from the file buffer
+      // Dynamically import the pdf-parse library only when needed
+      const pdf = (await import('pdf-parse')).default;
+
+      // Use the library to extract data from the file buffer
       const data = await pdf(fileBuffer);
 
       const text = data.text;
@@ -43,7 +46,6 @@ export class PDFProcessor {
       console.error(`Error processing PDF ${originalName}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during PDF parsing.';
       
-      // Return a structured error response with a helpful fallback message
       return {
         success: false,
         text: `PDF Document: ${originalName}\n\nThis document has been uploaded, but automatic text extraction failed. This can happen if the PDF contains only images, has complex formatting, or is encrypted.`,
