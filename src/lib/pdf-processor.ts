@@ -1,6 +1,5 @@
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+// Note: All 'import' statements at the top of the file are removed.
 
-// This is needed to prevent a Vercel build error with this specific library
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 
 type PDFProcessResult = {
@@ -20,13 +19,14 @@ export class PDFProcessor {
     fileSize: number
   ): Promise<PDFProcessResult> {
     try {
-      // Load the PDF document from the buffer
+      // Dynamically import pdfjs-dist ONLY when the function runs
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
       const loadingTask = pdfjs.getDocument({ data: fileBuffer });
       const pdf = await loadingTask.promise;
       const numPages = pdf.numPages;
       let fullText = '';
 
-      // Extract text from each page
       for (let i = 1; i <= numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
@@ -37,8 +37,6 @@ export class PDFProcessor {
       if (!fullText || fullText.trim().length === 0) {
         throw new Error('No text content found in the PDF. It may be an image-only file.');
       }
-
-      console.log(`Successfully extracted ${fullText.length} characters from ${originalName}`);
 
       return {
         success: true,

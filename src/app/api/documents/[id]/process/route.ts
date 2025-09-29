@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { PDFProcessor } from '@/lib/pdf-processor'
-import mammoth from 'mammoth'
 
 export async function POST(
   request: NextRequest,
@@ -9,107 +8,66 @@ export async function POST(
 ) {
   try {
     const documentId = params.id
-
-    // Get document from database
-    const document = await db.document.findUnique({
-      where: { id: documentId }
-    })
+    const document = await db.document.findUnique({ where: { id: documentId } })
 
     if (!document) {
-      return NextResponse.json({ 
-        error: 'Document not found' 
-      }, { status: 404 })
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 })
     }
-
     if (document.status !== 'processing') {
-      return NextResponse.json({ 
-        error: 'Document is not in processing state' 
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Document is not in processing state' }, { status: 400 })
     }
 
-    // --- START OF BLOB LOGIC FIX ---
-    
-    // 1. Download the file from the Vercel Blob URL stored in the database
     const response = await fetch(document.filePath);
     if (!response.ok) {
         throw new Error(`Failed to fetch file from Blob storage: ${response.statusText}`);
     }
     const fileBuffer = Buffer.from(await response.arrayBuffer());
 
-    // --- END OF BLOB LOGIC FIX ---
-
-    // Robust text extraction (your existing logic is fine)
-    let extractedText = ''
-    try {
-      if (document.fileType === 'pdf') {
-        console.log('Processing PDF file:', document.originalName);
-        const pdfResult = await PDFProcessor.processPDF(
-          fileBuffer, 
-          document.originalName, 
-          document.fileSize
-        );
-        extractedText = pdfResult.text;
-        console.log('PDF processing completed:', pdfResult.success);
-        
-      } else if (document.fileType === 'docx') {
-        console.log('Processing DOCX file:', document.originalName);
-        const result = await mammoth.extractRawText({ buffer: fileBuffer });
-        extractedText = result.value;
-        if (!extractedText || extractedText.trim().length === 0) {
-            throw new Error('No text extracted from DOCX');
-        }
-      }
-      
-      if (!extractedText || extractedText.trim().length === 0) {
-        extractedText = `Document: ${document.originalName}\n\nThis document has been uploaded successfully, but automatic text extraction was not possible.`;
-      }
-      
-    } catch (extractionError) {
-      console.error('Error in text extraction:', extractionError);
-      extractedText = `Document uploaded successfully. Text extraction encountered an error. File: ${document.originalName}`;
+    let extractedText = '';
+    
+    if (document.fileType === 'pdf') {
+      const pdfResult = await PDFProcessor.processPDF(fileBuffer, document.originalName, document.fileSize);
+      extractedText = pdfResult.text;
+    } else if (document.fileType === 'docx') {
+      // Dynamically import mammoth ONLY when processing a DOCX file
+      const mammoth = (await import('mammoth')).default;
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      extractedText = result.value;
     }
 
-    // Create simple chunks (your existing logic is fine)
-    const chunks = createSimpleChunks(extractedText, documentId, document.originalName);
+    if (!extractedText || extractedText.trim().length === 0) {
+      throw new Error('No text could be extracted from the document.');
+    }
 
-    // Save chunks to database
-    for (let i = 0; i < chunks.length; i++) {
+    // Your existing logic for chunking and saving to the DB...
+    const chunks = createSimpleChunks(extractedText, documentId);
+    for (const chunk of chunks) {
       await db.documentChunk.create({
         data: {
           documentId,
-          content: chunks[i].content,
-          chunkIndex: i,
-          metadata: JSON.stringify({
-            documentId,
-            chunkIndex: i,
-            documentName: document.originalName,
-          }),
-          embedding: JSON.stringify([])
+          content: chunk.content,
+          chunkIndex: chunk.chunkIndex,
+          embedding: JSON.stringify([]), // Placeholder
+          metadata: JSON.stringify({ documentName: document.originalName }),
         }
       });
     }
 
-    // Update document status to ready
     await db.document.update({
       where: { id: documentId },
       data: { status: 'ready' }
     });
 
-    return NextResponse.json({ 
-      message: 'Document processed successfully',
-      documentId,
-      chunksProcessed: chunks.length,
-    });
+    return NextResponse.json({ message: 'Document processed successfully' });
 
   } catch (error) {
     console.error('Error processing document:', error);
-    
-    // Update document status to error if something fails
-    await db.document.update({
-      where: { id: params.id },
-      data: { status: 'error' }
-    });
-
+    if (params.id) {
+        await db.document.update({
+            where: { id: params.id },
+            data: { status: 'error' }
+        }).catch(updateError => console.error("Failed to update status to error:", updateError));
+    }
     return NextResponse.json({ 
       error: 'Failed to process document',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -117,24 +75,18 @@ export async function POST(
   }
 }
 
-// Simple chunking function (your existing logic is fine)
-function createSimpleChunks(text: string, documentId: string, documentName: string): Array<{content: string}> {
-  const chunks: Array<{content:string}> = [];
+// Simple chunking function - ensure it's defined
+function createSimpleChunks(text: string, documentId: string): Array<{content: string, chunkIndex: number}> {
+  const chunks: Array<{content: string, chunkIndex: number}> = [];
   const chunkSize = 1000;
   const chunkOverlap = 200;
-  
-  const cleanedText = text
-    .replace(/\r\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  const cleanedText = text.replace(/\s{2,}/g, ' ').trim();
   
   for (let i = 0; i < cleanedText.length; i += chunkSize - chunkOverlap) {
-    const chunk = cleanedText.substring(i, i + chunkSize);
-    if (chunk.trim().length > 0) {
-      chunks.push({ content: chunk });
+    const chunkContent = cleanedText.substring(i, i + chunkSize);
+    if (chunkContent.trim().length > 0) {
+      chunks.push({ content: chunkContent, chunkIndex: chunks.length });
     }
   }
-  
   return chunks;
 }
