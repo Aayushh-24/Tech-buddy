@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import path from 'path'
 import { PDFProcessor } from '@/lib/pdf-processor'
+import { readFile } from 'fs/promises' // Use a static import for better performance
+import mammoth from 'mammoth'           // Use a static import for better performance
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } } // This signature is correct
 ) {
   try {
     const documentId = params.id
@@ -27,9 +29,12 @@ export async function POST(
       }, { status: 400 })
     }
 
-    // Read the file using dynamic import
-    const { readFile } = await import('fs/promises')
-    const filePath = path.join(process.cwd(), 'uploads', document.filename)
+    // --- START OF FIX ---
+    // The filePath from the database is now the source of truth.
+    // It will be `/tmp/uploads/...` on Vercel and wherever you saved it locally.
+    const filePath = document.filePath 
+    // --- END OF FIX ---
+
     const fileBuffer = await readFile(filePath)
 
     // Robust text extraction
@@ -40,7 +45,6 @@ export async function POST(
         console.log('Processing PDF file:', document.originalName)
         console.log('File size:', fileBuffer.length, 'bytes')
         
-        // Use the enhanced PDF processor
         const pdfResult = await PDFProcessor.processPDF(
           fileBuffer, 
           document.originalName, 
@@ -58,9 +62,7 @@ export async function POST(
       } else if (document.fileType === 'docx') {
         console.log('Processing DOCX file:', document.originalName)
         
-        // Try to extract text from DOCX
         try {
-          const mammoth = await import('mammoth')
           const result = await mammoth.extractRawText({ buffer: fileBuffer })
           extractedText = result.value
           console.log('DOCX text extracted, length:', extractedText.length)
@@ -74,7 +76,6 @@ export async function POST(
         }
       }
       
-      // Final validation
       if (!extractedText || extractedText.trim().length === 0) {
         extractedText = `Document: ${document.originalName}\n\nThis document has been uploaded successfully. However, automatic text extraction was not possible. This could be because:\n\n- The file is password-protected\n- The file contains only images or scanned content\n- The file format is not supported for text extraction\n\nFile information:\n- Name: ${document.originalName}\n- Size: ${(document.fileSize / 1024).toFixed(2)} KB\n- Type: ${document.fileType.toUpperCase()}\n\nYou can still use this document for general questions and assistance.`
       }
@@ -137,18 +138,16 @@ export async function POST(
 
 // Simple chunking function
 function createSimpleChunks(text: string, documentId: string, documentName: string): Array<{content: string}> {
-  const chunks: Array<{content: string}> = []
+  const chunks: Array<{content:string}> = []
   const chunkSize = 1000
   const chunkOverlap = 200
   
-  // Clean text
   const cleanedText = text
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/\s{2,}/g, ' ')
     .trim()
   
-  // Split into chunks
   for (let i = 0; i < cleanedText.length; i += chunkSize - chunkOverlap) {
     const chunk = cleanedText.substring(i, i + chunkSize)
     if (chunk.trim().length > 0) {
