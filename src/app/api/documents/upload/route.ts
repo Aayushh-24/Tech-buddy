@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import fs from 'fs/promises'; // Use a standard import for the file system module
 import { db } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { put } from '@vercel/blob'; // 1. Import the 'put' function from Vercel Blob
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,51 +12,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
+    // --- All validation logic remains the same ---
     const allowedTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
-    
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ 
-        error: 'Invalid file type. Only PDF and DOCX files are allowed.' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid file type.' }, { status: 400 });
     }
-
-    // Validate file size (10MB limit)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: 'File size exceeds 10MB limit.' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'File size exceeds 10MB limit.' }, { status: 400 });
     }
 
-    // --- START OF FIXES ---
+    // --- START OF REFACTORED BLOB LOGIC ---
 
-    // 1. Define the Vercel-friendly writable directory
-    const uploadsDir = path.join('/tmp', 'uploads');
-
-    // 2. Ensure the directory exists using the correct async function
-    await fs.mkdir(uploadsDir, { recursive: true });
-
-    // 3. Generate a unique filename and define the full file path
+    // 2. Generate a unique filename for the blob
     const fileExtension = file.name.split('.').pop();
     const filename = `${uuidv4()}.${fileExtension}`;
-    const filePath = path.join(uploadsDir, filename);
 
-    // --- END OF FIXES ---
+    // 3. Upload the file to Vercel Blob storage
+    const blob = await put(filename, file, {
+      access: 'public',
+    });
 
-    // Save file
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    await fs.writeFile(filePath, buffer);
+    // --- END OF REFACTORED BLOB LOGIC ---
 
     // Get or create default user
     let user = await db.user.findUnique({
       where: { id: 'default-user' }
     });
-    
     if (!user) {
       user = await db.user.create({
         data: {
@@ -68,20 +52,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Save to database
+    // 4. Save the public Blob URL to the database
     const document = await db.document.create({
       data: {
         filename,
         originalName: file.name,
         fileType: fileExtension as 'pdf' | 'docx',
         fileSize: file.size,
-        filePath,
+        filePath: blob.url, // IMPORTANT: Save the URL from Vercel Blob
         status: 'processing',
         userId: user.id
       }
     });
 
-    // Start processing for RAG pipeline (your existing logic is fine)
+    // Start processing for RAG pipeline (your existing logic)
     try {
       fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/documents/${document.id}/process`, {
         method: 'POST',

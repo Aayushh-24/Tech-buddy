@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import path from 'path'
-import { unlink } from 'fs/promises'
+import { del } from '@vercel/blob'; // 1. Import 'del' from Vercel Blob
 
+// No changes needed for the GET function, it's already correct.
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -30,6 +30,7 @@ export async function GET(
   }
 }
 
+// No changes needed for the PATCH function, it's already correct.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -57,12 +58,14 @@ export async function PATCH(
   }
 }
 
+
+// --- START OF UPDATED DELETE FUNCTION ---
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Get document first to check if it exists
+    // Get document first to find its Blob storage URL
     const document = await db.document.findUnique({
       where: { id: params.id }
     })
@@ -73,24 +76,25 @@ export async function DELETE(
       }, { status: 404 })
     }
 
-    // Delete document chunks first
+    // 2. Delete the file from Vercel Blob storage using its URL
+    if (document.filePath) {
+        try {
+            await del(document.filePath);
+        } catch (fileError) {
+            console.warn('Could not delete file from Blob storage:', fileError);
+            // Don't fail the operation if Blob deletion fails, just log it
+        }
+    }
+
+    // Delete document chunks from the database
     await db.documentChunk.deleteMany({
       where: { documentId: params.id }
     })
 
-    // Delete document from database
+    // Delete the main document record from the database
     await db.document.delete({
       where: { id: params.id }
     })
-
-    // Try to delete the file from filesystem
-    try {
-      const filePath = path.join(process.cwd(), 'uploads', document.filename)
-      await unlink(filePath)
-    } catch (fileError) {
-      console.warn('Could not delete file from filesystem:', fileError)
-      // Don't fail the operation if file deletion fails
-    }
 
     return NextResponse.json({ 
       message: 'Document deleted successfully',
@@ -103,3 +107,4 @@ export async function DELETE(
     }, { status: 500 })
   }
 }
+// --- END OF UPDATED DELETE FUNCTION ---
