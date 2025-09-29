@@ -3,7 +3,6 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 // This is needed to prevent a Vercel build error with this specific library
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 
-// Define a type for the result for better code quality
 type PDFProcessResult = {
   success: boolean;
   text: string;
