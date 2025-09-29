@@ -6,70 +6,115 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  name            String?
-  avatar          String?
-  openRouterApiKey String?
-  githubToken     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+// --- Enums for Type Safety ---
+// Enums ensure that only these specific values can be used for certain fields,
+// which prevents bugs from typos and makes the code easier to understand.
 
-  // Usage tracking fields
-  documentsUploaded Int      @default(0)
-  questionsAsked    Int      @default(0)
-  tokensUsed        Int      @default(0)
+enum DocumentStatus {
+  processing
+  ready
+  error
+}
+
+enum MessageRole {
+  user
+  assistant
+}
+
+enum GeneratedDocType {
+  api_reference
+  tutorial
+  guide
+  readme
+}
+
+enum GeneratedDocTone {
+  professional
+  casual
+  technical
+  beginner_friendly
+}
+
+enum GeneratedDocAudience {
+  developers
+  managers
+  end_users
+  stakeholders
+}
+
+enum UsageLogAction {
+  document_upload
+  question_asked
+  tokens_used
+}
+
+
+// --- Models ---
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String?
+  avatar            String?
+  // 🚨 SECURITY WARNING: Storing keys in plain text is a risk.
+  // You should encrypt these values in your application code before saving them.
+  openRouterApiKey  String?
+  githubToken       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  documentsUploaded Int       @default(0)
+  questionsAsked    Int       @default(0)
+  tokensUsed        Int       @default(0)
   lastActiveAt      DateTime?
-  subscriptionType  String   @default("free") // "free" or "premium"
+  subscriptionType  String    @default("free")
   subscriptionEnds  DateTime?
 
-  // Relations
   documents       Document[]
   repositories    Repository[]
   generatedDocs   GeneratedDocument[]
   conversations   Conversation[]
   usageLogs       UsageLog[]
-  
+
   @@map("users")
 }
 
 model Document {
-  id          String   @id @default(cuid())
-  filename    String
+  id           String         @id @default(cuid())
+  filename     String
   originalName String
-  fileType    String   // "pdf" or "docx"
-  fileSize    Int
-  filePath    String
-  status      String   @default("processing") // "processing", "ready", "error"
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  fileType     String
+  fileSize     Int
+  filePath     String
+  status       DocumentStatus @default(processing) // <-- Changed to Enum
+  userId       String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chunks      DocumentChunk[]
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks        DocumentChunk[]
   conversations Conversation[]
-  
+
   @@map("documents")
 }
 
 model DocumentChunk {
-  id          String   @id @default(cuid())
-  documentId  String
-  content     String
-  embedding   String   // Store as JSON string
-  chunkIndex  Int
-  metadata    String?  // Store as JSON string
-  createdAt   DateTime @default(now())
+  id         String @id @default(cuid())
+  documentId String
+  content    String
+  // ⚡️ PERFORMANCE NOTE: Storing embeddings as a String is slow for searches.
+  // For a production app, you should use the `pgvector` extension and a `vector` type.
+  embedding  String
+  chunkIndex Int
+  metadata   Json?  // <-- Changed to native JSON type
+  createdAt  DateTime @default(now())
 
-  // Relations
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   @@map("document_chunks")
 }
 
@@ -86,87 +131,81 @@ model Repository {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  files       RepositoryFile[]
-  
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files RepositoryFile[]
+
   @@map("repositories")
 }
 
 model RepositoryFile {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   repositoryId String
   path         String
   filename     String
   content      String?
   language     String?
   size         Int?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 
-  // Relations
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
   @@map("repository_files")
 }
 
 model GeneratedDocument {
-  id          String   @id @default(cuid())
+  id          String             @id @default(cuid())
   title       String
   content     String
-  docType     String   // "api-reference", "tutorial", "guide", "readme"
-  tone        String   // "professional", "casual", "technical", "beginner-friendly"
-  audience    String   // "developers", "managers", "end-users", "stakeholders"
-  codeContext String?  // JSON string with code context
+  docType     GeneratedDocType   // <-- Changed to Enum
+  tone        GeneratedDocTone   // <-- Changed to Enum
+  audience    GeneratedDocAudience // <-- Changed to Enum
+  codeContext Json?              // <-- Changed to native JSON type
   userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("generated_documents")
 }
 
 model Conversation {
-  id          String   @id @default(cuid())
-  documentId  String?
-  userId      String
-  title       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String     @id @default(cuid())
+  documentId String?
+  userId     String
+  title      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 
-  // Relations
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document    Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  messages    Message[]
-  
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  messages Message[]
+
   @@map("conversations")
 }
 
 model Message {
-  id            String   @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
-  role          String   // "user" or "assistant"
-  content       String
-  metadata      String?  // Store as JSON string
-  createdAt     DateTime @default(now())
+  role           MessageRole  // <-- Changed to Enum
+  content        String
+  metadata       Json?        // <-- Changed to native JSON type
+  createdAt      DateTime     @default(now())
 
-  // Relations
-  conversation  Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
   @@map("messages")
 }
 
 model UsageLog {
-  id          String   @id @default(cuid())
-  userId      String
-  action      String   // "document_upload", "question_asked", "tokens_used"
-  quantity    Int      @default(1)
-  metadata    String?  // JSON string with additional context
-  createdAt   DateTime @default(now())
+  id        String         @id @default(cuid())
+  userId    String
+  action    UsageLogAction // <-- Changed to Enum
+  quantity  Int            @default(1)
+  metadata  Json?          // <-- Changed to native JSON type
+  createdAt DateTime       @default(now())
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("usage_logs")
 }
