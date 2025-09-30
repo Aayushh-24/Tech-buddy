@@ -1,4 +1,8 @@
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
+
+// This line is the fix. It tells pdfjs-dist to run in a server-friendly way.
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.mjs`;
 
 type PDFProcessResult = {
   success: boolean; text: string; metadata: { pages: number; processingMethod: string; error?: string; };
@@ -7,7 +11,6 @@ type PDFProcessResult = {
 export class PDFProcessor {
   public static async processPDF(fileBuffer: Buffer, originalName: string): Promise<PDFProcessResult> {
     try {
-      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
       const loadingTask = pdfjs.getDocument({ data: fileBuffer });
       const pdf = await loadingTask.promise;
       let fullText = '';
@@ -25,8 +28,7 @@ export class PDFProcessor {
       console.error(`Error processing PDF ${originalName}:`, error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error.';
       return {
-        success: false,
-        text: `Failed to extract text from ${originalName}.`,
+        success: false, text: `Failed to extract text from ${originalName}.`,
         metadata: { pages: 0, processingMethod: 'pdfjs-dist-failed', error: errorMessage },
       };
     }

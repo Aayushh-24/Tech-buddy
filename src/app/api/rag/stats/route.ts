@@ -1,41 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { RAGPipeline } from '@/lib/rag'
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Check for required environment variables
-    const huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY
-    const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    // This new code safely gets real stats directly from your database
+    const documentCount = await db.document.count();
+    const chunkCount = await db.documentChunk.count();
 
-    if (!huggingFaceApiKey || !openRouterApiKey) {
-      return NextResponse.json({ 
-        error: 'Required API keys are not configured' 
-      }, { status: 500 })
-    }
+    const stats = {
+      documents: documentCount,
+      chunks: chunkCount,
+      embeddings: 0, // This is a placeholder
+    };
 
-    // Initialize RAG pipeline
-    const ragPipeline = new RAGPipeline({
-      huggingFaceApiKey,
-      openRouterApiKey
-    })
-
-    // Initialize the RAG system (load existing data)
-    await ragPipeline.initialize()
-
-    // Get system statistics
-    const stats = await ragPipeline.getStats()
-
-    return NextResponse.json({ 
-      stats,
-      ragEnabled: true,
-      message: 'RAG system is operational'
-    })
+    return NextResponse.json(stats);
 
   } catch (error) {
-    console.error('Error getting RAG stats:', error)
-    return NextResponse.json({ 
-      error: 'Failed to get RAG statistics',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    console.error("Error in /api/rag/stats:", error);
+    return NextResponse.json({ error: "Failed to get RAG stats" }, { status: 500 });
   }
 }
