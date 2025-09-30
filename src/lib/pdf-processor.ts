@@ -1,11 +1,4 @@
-import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import type { TextItem } from 'pdfjs-dist/types/src/display/api';
-
-// --- THIS IS THE FIX ---
-// This line explicitly disables a browser-only feature called "workers",
-// forcing the library to run in a simple, server-compatible mode.
-pdfjs.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.js';
-// --- END OF FIX ---
+// Note: There is NO import for pdf-parse at the top of the file.
 
 type PDFProcessResult = {
   success: boolean; text: string; metadata: { pages: number; processingMethod: string; error?: string; };
@@ -14,25 +7,36 @@ type PDFProcessResult = {
 export class PDFProcessor {
   public static async processPDF(fileBuffer: Buffer, originalName: string): Promise<PDFProcessResult> {
     try {
-      const loadingTask = pdfjs.getDocument({ data: fileBuffer });
-      const pdf = await loadingTask.promise;
-      let fullText = '';
+      // THIS IS THE FIX: Dynamically import pdf-parse only when the function is running.
+      // This hides it from the Vercel build process, preventing the crash.
+      const pdf = (await import('pdf-parse')).default;
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        fullText += textContent.items.map(item => (item as TextItem).str).join(' ') + '\n';
+      const data = await pdf(fileBuffer);
+
+      if (!data.text || data.text.trim().length === 0) {
+        throw new Error('No text content found in the PDF.');
       }
 
-      if (!fullText.trim()) throw new Error('No text content found in PDF.');
-      
-      return { success: true, text: fullText, metadata: { pages: pdf.numPages, processingMethod: 'pdfjs-dist' } };
+      return {
+        success: true,
+        text: data.text,
+        metadata: {
+          pages: data.numpages,
+          processingMethod: 'pdf-parse',
+        },
+      };
+
     } catch (error) {
       console.error(`Error processing PDF ${originalName}:`, error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error.';
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
       return {
-        success: false, text: `Failed to extract text from ${originalName}.`,
-        metadata: { pages: 0, processingMethod: 'pdfjs-dist-failed', error: errorMessage },
+        success: false,
+        text: `Failed to extract text from ${originalName}.`,
+        metadata: {
+          pages: 0,
+          processingMethod: 'pdf-parse-failed',
+          error: errorMessage,
+        },
       };
     }
   }
