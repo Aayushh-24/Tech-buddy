@@ -3,8 +3,8 @@ import { streamText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// IMPORTANT: Set the runtime to edge for best streaming performance
-export const runtime = 'edge';
+// The 'runtime' export has been removed to solve the size limit error.
+// The function will now run as a standard Serverless Function with a 50 MB limit.
 
 // Create an OpenAI API client that points to the OpenRouter API
 const openrouter = createOpenAI({
@@ -14,7 +14,6 @@ const openrouter = createOpenAI({
 
 export async function POST(req: NextRequest) {
   try {
-    // Check for the API key
     if (!process.env.OPENROUTER_API_KEY) {
       return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
     }
@@ -25,28 +24,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Question and documentId are required' }, { status: 400 });
     }
 
-    // --- This is the RAG (Retrieval-Augmented Generation) part ---
-
     // 1. Retrieve relevant document chunks from your database
-    // Note: This is a simplified search. A production app would use vector similarity search.
     const chunks = await db.documentChunk.findMany({
       where: { 
         documentId: documentId,
-        // A simple text search to find chunks containing the first word of the question
         content: {
           contains: question.split(' ')[0],
-          mode: 'insensitive' // Case-insensitive search
+          mode: 'insensitive'
         }
       },
-      take: 5, // Get the top 5 most relevant chunks
+      take: 5,
     });
 
     if (chunks.length === 0) {
-       // Use NextResponse for a proper JSON error response
        return NextResponse.json({ error: "I could not find any relevant information in the document to answer your question." }, { status: 404 });
     }
 
-    // Combine the content of the retrieved chunks into a single context string
     const context = chunks.map(chunk => chunk.content).join('\n\n---\n\n');
 
     // 2. Augment the prompt with the retrieved context
