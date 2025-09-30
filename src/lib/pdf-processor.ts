@@ -1,8 +1,11 @@
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { TextItem } from 'pdfjs-dist/types/src/display/api';
 
-// This line is the fix. It tells pdfjs-dist to run in a server-friendly way.
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.mjs`;
+// --- THIS IS THE FIX ---
+// This line explicitly disables a browser-only feature called "workers",
+// forcing the library to run in a simple, server-compatible mode.
+pdfjs.GlobalWorkerOptions.workerSrc = 'pdfjs-dist/build/pdf.worker.js';
+// --- END OF FIX ---
 
 type PDFProcessResult = {
   success: boolean; text: string; metadata: { pages: number; processingMethod: string; error?: string; };
