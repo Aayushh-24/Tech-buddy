@@ -20,20 +20,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Question and documentId are required' }, { status: 400 });
     }
 
-    // 1. Define common "stop words" to ignore in a search
     const stopWords = new Set(['what', 'is', 'a', 'an', 'the', 'in', 'of', 'for', 'how', 'to', 'and', 'with']);
-    
-    // 2. Create an array of important keywords from the user's question
-    const keywords = question
-      .toLowerCase()
-      .split(/\s+/) // Split into words
-      .filter(word => word.length > 2 && !stopWords.has(word)); // Ignore small words and stop words
+    const keywords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2 && !stopWords.has(word));
 
     if (keywords.length === 0) {
         return NextResponse.json({ error: "Please ask a more specific question." }, { status: 400 });
     }
 
-    // 3. Build a Prisma query that searches for chunks containing ANY of the important keywords
     const chunks = await db.documentChunk.findMany({
         where: {
             documentId: documentId,
@@ -44,7 +37,7 @@ export async function POST(req: NextRequest) {
                 }
             }))
         },
-        take: 5, // Take the top 5 matching chunks
+        take: 5,
     });
 
     if (chunks.length === 0) {
