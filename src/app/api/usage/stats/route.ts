@@ -1,40 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { UsageService } from '@/lib/usage-service'
+import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // In a real app, you would get the user ID from authentication
-    // For now, we'll use a demo user ID
-    const userId = 'demo-user-id'
+    const userId = 'default-user'; // Hardcode the user ID to match the rest of the app
 
-    const usageStats = await UsageService.getUserUsage(userId)
-    const usageLimits = UsageService.getUsageLimits(usageStats.subscriptionType)
+    // Find the user, or create them if they don't exist yet.
+    // This makes the route resilient and prevents crashes.
+    let user = await db.user.findUnique({
+      where: { id: userId },
+    });
 
-    // Calculate remaining usage
-    const remainingUsage = {
-      documentsUploaded: Math.max(0, usageLimits.documentsUploaded - usageStats.documentsUploaded),
-      questionsAsked: Math.max(0, usageLimits.questionsAsked - usageStats.questionsAsked),
-      tokensUsed: Math.max(0, usageLimits.tokensUsed - usageStats.tokensUsed)
+    if (!user) {
+      user = await db.user.create({
+        data: {
+          id: userId,
+          email: 'default@example.com',
+          name: 'Default User',
+        },
+      });
     }
 
-    // Calculate usage percentages
-    const usagePercentages = {
-      documentsUploaded: Math.round((usageStats.documentsUploaded / usageLimits.documentsUploaded) * 100),
-      questionsAsked: Math.round((usageStats.questionsAsked / usageLimits.questionsAsked) * 100),
-      tokensUsed: Math.round((usageStats.tokensUsed / usageLimits.tokensUsed) * 100)
-    }
-
+    // Return the usage stats for the default user
     return NextResponse.json({
-      usage: usageStats,
-      limits: usageLimits,
-      remaining: remainingUsage,
-      percentages: usagePercentages
-    })
+      documentsUploaded: user.documentsUploaded,
+      questionsAsked: user.questionsAsked,
+      tokensUsed: user.tokensUsed,
+    });
+
   } catch (error) {
-    console.error('Error fetching usage stats:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch usage statistics' },
-      { status: 500 }
-    )
+    console.error("Error in /api/usage/stats:", error);
+    return NextResponse.json({ error: "Failed to get usage stats" }, { status: 500 });
   }
 }
