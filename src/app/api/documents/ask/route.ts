@@ -3,7 +3,7 @@ import { streamText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// The 'runtime = edge' export has been removed. This is the fix.
+export const runtime = 'edge';
 
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
@@ -22,15 +22,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Question and documentId are required' }, { status: 400 });
     }
 
+    // 1. Define common "stop words" to ignore in a search
+    const stopWords = new Set(['what', 'is', 'a', 'an', 'the', 'in', 'of', 'for', 'how', 'to', 'and', 'with']);
+    
+    // 2. Create an array of important keywords from the user's question
+    const keywords = question
+      .toLowerCase()
+      .split(/\s+/) // Split into words
+      .filter(word => word.length > 2 && !stopWords.has(word)); // Ignore small words and stop words
+
+    if (keywords.length === 0) {
+        return NextResponse.json({ error: "Please ask a more specific question." }, { status: 400 });
+    }
+
+    // 3. Build a Prisma query that searches for chunks containing ANY of the important keywords
     const chunks = await db.documentChunk.findMany({
-      where: { 
-        documentId: documentId,
-        content: {
-          contains: question.split(' ')[0],
-          mode: 'insensitive'
-        }
-      },
-      take: 5,
+        where: {
+            documentId: documentId,
+            OR: keywords.map(keyword => ({
+                content: {
+                    contains: keyword,
+                    mode: 'insensitive',
+                }
+            }))
+        },
+        take: 5, // Take the top 5 matching chunks
     });
 
     if (chunks.length === 0) {
