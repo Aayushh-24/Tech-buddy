@@ -1,48 +1,30 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+import { NextRequest, NextResponse } from 'next/server';
 
-// IMPORTANT: Set the runtime to edge for best streaming performance
-export const runtime = 'edge';
-
-// Create an OpenAI API client that points to the OpenRouter API
-const openrouter = createOpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-});
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    if (!process.env.OPENROUTER_API_KEY) {
-      return new Response('OpenRouter API key is not configured.', { status: 401 });
-    }
+    const { messages } = await req.json();
 
-    // --- START OF FIX ---
-    // Make the backend compatible with the frontend's request format
-    const body = await req.json();
-    let messages = body.messages;
-
-    // If the frontend sends a single 'message' string, convert it to the required array format
-    if (!messages && body.message) {
-      messages = [{ role: 'user', content: body.message }];
-    }
-
-    // If there are still no messages, return an error
-    if (!messages || messages.length === 0) {
-      return new Response('Messages are required in the request body.', { status: 400 });
-    }
-    // --- END OF FIX ---
-
-    const result = await streamText({
-      model: openrouter('mistralai/mistral-7b-instruct:free'),
-      messages, // Use the (potentially converted) messages array
-      system: `You are TechBuddy, an expert AI technical assistant specializing in software development. Be helpful, provide clear code examples using markdown, and explain complex concepts simply.`,
+    // --- NEW DIRECT API CALL LOGIC ---
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        "model": "mistralai/mistral-7b-instruct:free",
+        "messages": messages,
+        "stream": true
+      })
     });
 
-    // Respond with the stream using the corrected function name
-    return result.toTextStreamResponse();
+    // Return the streaming response directly
+    return new Response(response.body, {
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
 
   } catch (error) {
-    console.error('Error in assistant API:', error);
-    return new Response('An error occurred while processing your request.', { status: 500 });
+    console.error('Error in /api/assistant:', error);
+    return NextResponse.json({ error: 'An error occurred.' }, { status: 500 });
   }
 }

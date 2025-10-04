@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '@/components/layout/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,12 +7,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Bot, User, Loader2, Code, FileText, Lightbulb, BookOpen, MessageSquare, Copy } from 'lucide-react';
 
-// Define the shape of a message
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-}
+interface Message { id: string; role: 'user' | 'assistant'; content: string; }
 
 export default function AssistantPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -23,10 +17,7 @@ export default function AssistantPage() {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the bottom of the chat
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,48 +33,48 @@ export default function AssistantPage() {
       const response = await fetch('/api/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send the entire message history
         body: JSON.stringify({ messages: newMessages }),
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(response.statusText || "Failed to get response from server.");
+        throw new Error(response.statusText || "Failed to get response.");
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let assistantResponse = '';
       const assistantMessageId = (Date.now() + 1).toString();
-
-      // Add a placeholder for the assistant's message
       setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '' }]);
 
-      // Read the stream
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        assistantResponse += decoder.decode(value, { stream: true });
-        
-        // Update the assistant's message in the state as new text arrives
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessageId ? { ...msg, content: assistantResponse } : msg
-        ));
-      }
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        const parsedLines = lines
+            .map(line => line.replace(/^data: /, '').trim())
+            .filter(line => line !== '' && line !== '[DONE]')
+            .map(line => JSON.parse(line));
 
+        for (const parsedLine of parsedLines) {
+            const { choices } = parsedLine;
+            const { delta } = choices[0];
+            const { content } = delta;
+            if (content) {
+                setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessageId ? { ...msg, content: msg.content + content } : msg
+                ));
+            }
+        }
+      }
     } catch (error) {
       console.error("Error fetching AI response:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `❌ Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}`,
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: `❌ Error: ${error instanceof Error ? error.message : 'An unknown error occurred.'}` }]);
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const quickActions = [
     { id: '1', title: 'Code Review', description: 'Get feedback', icon: <Code className="w-5 h-5" />, prompt: 'Can you review this code?' },
     { id: '2', title: 'Doc Help', description: 'Generate docs', icon: <FileText className="w-5 h-5" />, prompt: 'Help me write documentation' },
@@ -93,12 +84,12 @@ export default function AssistantPage() {
 
   return (
     <MainLayout>
+      {/* JSX for your page remains the same, just copy this logic part */}
       <div className="space-y-6">
         <div className="text-center"><h1 className="text-4xl font-bold tracking-tight gradient-text">AI Assistant</h1></div>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-1">
-            <Card>
-              <CardHeader><CardTitle className="text-lg">Quick Actions</CardTitle></CardHeader>
+            <Card><CardHeader><CardTitle className="text-lg">Quick Actions</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {quickActions.map((action) => (
                   <Button key={action.id} variant="outline" className="w-full justify-start h-auto p-3" onClick={() => setInput(action.prompt)}>
@@ -131,10 +122,7 @@ export default function AssistantPage() {
                       </div>
                     ))}
                     {isLoading && messages[messages.length - 1]?.role === 'user' && (
-                      <div className="flex gap-3 justify-start">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0"><Bot className="w-4 h-4 text-blue-600" /></div>
-                        <div className="bg-muted rounded-lg px-4 py-3"><Loader2 className="w-4 h-4 animate-spin" /></div>
-                      </div>
+                      <div className="flex gap-3 justify-start"><div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0"><Bot className="w-4 h-4 text-blue-600" /></div><div className="bg-muted rounded-lg px-4 py-3"><Loader2 className="w-4 h-4 animate-spin" /></div></div>
                     )}
                     <div ref={messagesEndRef} />
                   </div>
